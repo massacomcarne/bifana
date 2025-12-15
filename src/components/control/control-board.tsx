@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TimerWithEntity, TimersSnapshot } from "@/lib/timers/types";
 import { useTimers } from "@/lib/timers/use-timers";
 import { TimerControlCard } from "@/components/control/timer-control-card";
@@ -30,42 +30,38 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
   const [updatingTheme, setUpdatingTheme] = useState(false);
   const [themeError, setThemeError] = useState<string | null>(null);
 
-  const sortedTimers = useMemo(
-    () =>
-      [...snapshot.timers].sort((a, b) => a.order_index - b.order_index || a.created_at.localeCompare(b.created_at)),
-    [snapshot.timers]
+  const sortedTimers = [...snapshot.timers].sort(
+    (a, b) => a.order_index - b.order_index || a.created_at.localeCompare(b.created_at)
   );
 
-  const cardTimers = useMemo<CardTimer[]>(() => {
-    return sortedTimers.flatMap((timer) => {
-      const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.status === "running";
-      const timerAccent = timer.entity.kind === "group"
-        ? timer.entity.accent_color
-        : timer.group?.accent_color ?? timer.entity.accent_color ?? null;
+  const cardTimers: CardTimer[] = sortedTimers.flatMap((timer) => {
+    const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.status === "running";
+    const timerAccent = timer.entity.kind === "group"
+      ? timer.entity.accent_color
+      : timer.group?.accent_color ?? timer.entity.accent_color ?? null;
 
-      if (timer.members.length > 0) {
-        return timer.members.map<CardTimer>((member) => ({
-          id: `${timer.id}-${member.id}`,
-          timer,
-          displayEntity: member,
-          label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
-          isActive,
-          accentColor: timer.entity.kind === "group" ? timer.entity.accent_color ?? null : timerAccent
-        }));
+    if (timer.members.length > 0) {
+      return timer.members.map<CardTimer>((member) => ({
+        id: `${timer.id}-${member.id}`,
+        timer,
+        displayEntity: member,
+        label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
+        isActive,
+        accentColor: timer.entity.kind === "group" ? timer.entity.accent_color ?? null : timerAccent
+      }));
+    }
+
+    return [
+      {
+        id: timer.id,
+        timer,
+        displayEntity: timer.entity,
+        label: timer.group?.name ?? null,
+        isActive,
+        accentColor: timerAccent
       }
-
-      return [
-        {
-          id: timer.id,
-          timer,
-          displayEntity: timer.entity,
-          label: timer.group?.name ?? null,
-          isActive,
-          accentColor: timerAccent
-        }
-      ];
-    });
-  }, [sortedTimers, snapshot.activeTimerId]);
+    ];
+  });
 
   const handleResume = async (timerId: string) => {
     await resumeTimerAction({ timerId });
