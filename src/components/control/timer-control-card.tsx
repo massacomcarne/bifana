@@ -145,9 +145,13 @@ export function TimerControlCard({
           />
         </div>
         <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
-          <h3 className="w-full break-words text-lg font-semibold leading-tight">{displayEntity.name}</h3>
+          <h3 className="w-full break-words text-lg font-semibold leading-tight" suppressHydrationWarning>
+            {displayEntity.name}
+          </h3>
           {label ? (
-            <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground" suppressHydrationWarning>
+              {label}
+            </p>
           ) : null}
         </div>
       </div>

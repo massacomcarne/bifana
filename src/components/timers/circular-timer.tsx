@@ -80,7 +80,10 @@ export function CircularTimer({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("font-semibold tabular-nums", valueClassName ?? "text-[1.5rem]", displayColor)}>
+        <span
+          suppressHydrationWarning
+          className={cn("font-semibold tabular-nums", valueClassName ?? "text-[1.5rem]", displayColor)}
+        >
           {formatted}
         </span>
         {label ? <span className="mt-2 text-sm text-white/70">{label}</span> : null}

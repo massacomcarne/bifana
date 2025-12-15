@@ -127,7 +127,7 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
               <p className="text-muted-foreground"></p>
             </div>
             <div className="flex flex-col items-start gap-3 text-left md:items-end md:text-right">
-              <span className="text-2xl font-semibold uppercase tracking-wide text-black dark:text-slate-200">
+              <span className="text-2xl font-semibold uppercase tracking-wide text-black dark:text-slate-200" suppressHydrationWarning>
                 {formattedDate} {formattedTime}
               </span>
               <ThemeToggle className="self-start md:self-end" />
@@ -145,9 +145,13 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           />
           <div className="flex flex-col items-center gap-1 text-center">
             {activeCard.label ? (
-              <p className="max-w-full break-words text-sm uppercase tracking-wide text-muted-foreground">{activeCard.label}</p>
+              <p className="max-w-full break-words text-sm uppercase tracking-wide text-muted-foreground" suppressHydrationWarning>
+                {activeCard.label}
+              </p>
             ) : (
-              <h2 className="max-w-full break-words text-3xl font-semibold">{activeCard.displayEntity.name}</h2>
+              <h2 className="max-w-full break-words text-3xl font-semibold" suppressHydrationWarning>
+                {activeCard.displayEntity.name}
+              </h2>
             )}
             {activeCard.timer.members.length > 0 ? (
               <div className="mt-1 flex max-w-full flex-wrap justify-center gap-2 text-xs text-muted-foreground">
@@ -185,9 +189,13 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
                     />
                   </div>
                   <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
-                    <p className="w-full break-words text-base font-semibold leading-none">{card.displayEntity.name}</p>
+                    <p className="w-full break-words text-base font-semibold leading-none" suppressHydrationWarning>
+                      {card.displayEntity.name}
+                    </p>
                     {card.label ? (
-                      <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground">{card.label}</p>
+                      <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground" suppressHydrationWarning>
+                        {card.label}
+                      </p>
                     ) : null}
                   </div>
                 </div>
