@@ -34,6 +34,16 @@ function mapTimers(
   entities: Database["public"]["Tables"]["entities"]["Row"][]
 ): TimerWithEntity[] {
   const entityMap = new Map(entities.map((entity) => [entity.id, entity]));
+  const membersByGroup = new Map<string, Database["public"]["Tables"]["entities"]["Row"][]>();
+
+  for (const entity of entities) {
+    if (entity.kind === "user" && entity.group_id) {
+      const current = membersByGroup.get(entity.group_id) ?? [];
+      current.push(entity);
+      membersByGroup.set(entity.group_id, current);
+    }
+  }
+
   const enriched: TimerWithEntity[] = [];
 
   for (const timer of timers) {
@@ -43,11 +53,14 @@ function mapTimers(
     }
 
     const group = entity.group_id ? entityMap.get(entity.group_id) ?? null : null;
+    const membersSourceId = entity.kind === "group" ? entity.id : entity.group_id ?? null;
+    const members = membersSourceId ? membersByGroup.get(membersSourceId) ?? [] : [];
 
     enriched.push({
       ...timer,
       entity,
-      group
+      group,
+      members
     });
   }
 

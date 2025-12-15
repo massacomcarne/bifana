@@ -6,6 +6,7 @@ type EntityRow = Database["public"]["Tables"]["entities"]["Row"];
 export interface TimerWithEntity extends TimerRow {
   entity: EntityRow;
   group?: EntityRow | null;
+  members: EntityRow[];
 }
 
 export interface TimersSnapshot {

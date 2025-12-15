@@ -47,6 +47,18 @@ export function TimerControlCard({ timer, isActive, onResume, onPause, onReset, 
           {timer.group ? (
             <p className="text-sm uppercase tracking-wide text-muted-foreground">{timer.group.name}</p>
           ) : null}
+          {timer.members.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {timer.members.map((member) => (
+                <span
+                  key={member.id}
+                  className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {member.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <span className="mt-2 inline-flex w-fit items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {running ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado"}
           </span>

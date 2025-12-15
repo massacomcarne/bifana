@@ -4,9 +4,10 @@ import { useMemo } from "react";
 import { useTimers } from "@/lib/timers/use-timers";
 import type { TimersSnapshot } from "@/lib/timers/types";
 import { TimerControlCard } from "@/components/control/timer-control-card";
-import { NewTimerForm } from "@/components/control/new-timer-form";
+import { NewTimerDialog } from "@/components/control/new-timer-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
+  addGroupMembersAction,
   createEntityTimer,
   deleteTimer,
   pauseTimerAction,
@@ -43,8 +44,23 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
     await deleteTimer({ timerId });
   };
 
-  const handleCreate = async (payload: Parameters<typeof createEntityTimer>[0]) => {
-    await createEntityTimer(payload);
+  const handleCreateGroup = async (payload: {
+    name: string;
+    durationSeconds: number;
+    avatarUrl?: string | null;
+    members?: Array<{ name: string; avatarUrl?: string | null }>;
+  }) => {
+    await createEntityTimer({
+      name: payload.name,
+      kind: "group",
+      durationSeconds: payload.durationSeconds,
+      avatarUrl: payload.avatarUrl ?? undefined,
+      members: payload.members
+    });
+  };
+
+  const handleAddMembers = async (payload: Parameters<typeof addGroupMembersAction>[0]) => {
+    await addGroupMembersAction(payload);
   };
 
   return (
@@ -62,7 +78,7 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
           </div>
         </header>
 
-        <NewTimerForm existingTimers={sortedTimers} onCreate={handleCreate} />
+        <NewTimerDialog existingTimers={sortedTimers} onCreateGroup={handleCreateGroup} onAddMembers={handleAddMembers} />
 
         <section className="grid gap-6 xl:grid-cols-2">
           {sortedTimers.map((timer) => (

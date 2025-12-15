@@ -69,6 +69,15 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
             {activeTimer.group ? (
               <p className="text-sm uppercase tracking-wide text-muted-foreground">{activeTimer.group.name}</p>
             ) : null}
+            {activeTimer.members.length > 0 ? (
+              <div className="mt-1 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+                {activeTimer.members.map((member) => (
+                  <span key={member.id} className="rounded-full bg-muted px-3 py-1 font-semibold uppercase tracking-wide">
+                    {member.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -93,6 +102,15 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
                       <p className="text-lg font-semibold leading-none">{timer.entity.name}</p>
                       {timer.group ? (
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">{timer.group.name}</p>
+                      ) : null}
+                      {timer.members.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {timer.members.map((member) => (
+                            <span key={member.id} className="rounded-full bg-muted px-2 py-1 font-semibold">
+                              {member.name}
+                            </span>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                     <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium uppercase text-muted-foreground">

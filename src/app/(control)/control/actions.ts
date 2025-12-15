@@ -1,17 +1,24 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createServiceSupabaseClient } from "@/lib/supabase/server";
 
 const entityKinds = ["group", "user"] as const;
 
+const memberSchema = z.object({
+  name: z.string().min(1, "Nome obrigatório"),
+  avatarUrl: z.string().url().nullable().optional()
+});
+
 const createTimerSchema = z.object({
   name: z.string().min(1, "Nome obrigatório"),
   kind: z.enum(entityKinds),
   durationSeconds: z.number().int().min(10, "O tempo mínimo é 10 segundos"),
   avatarUrl: z.string().url().nullable().optional(),
-  groupId: z.string().uuid().nullable().optional()
+  groupId: z.string().uuid().nullable().optional(),
+  members: z.array(memberSchema).max(20).optional()
 });
 
 const updateTimerSchema = z.object({
@@ -25,6 +32,52 @@ const updateTimerSchema = z.object({
 const identifierSchema = z.object({
   timerId: z.string().uuid()
 });
+
+const addGroupMembersSchema = z.object({
+  groupId: z.string().uuid(),
+  members: z.array(memberSchema).min(1, "Introduza pelo menos um membro").max(50)
+});
+
+const AVATAR_BUCKET = "timer-avatars";
+const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
+
+type ServiceSupabase = ReturnType<typeof createServiceSupabaseClient>;
+
+async function ensureAvatarBucket(supabase: ServiceSupabase) {
+  const { error } = await supabase.storage.createBucket(AVATAR_BUCKET, {
+    public: true,
+    fileSizeLimit: `${MAX_UPLOAD_SIZE}`,
+    allowedMimeTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp"
+    ]
+  });
+
+  if (error && error.message !== "Bucket already exists") {
+    // Ignore bucket already exists error, bubble others
+    throw error;
+  }
+}
+
+function inferFileExtension(file: File) {
+  const name = file.name?.split?.(".");
+  if (name && name.length > 1) {
+    return name.pop();
+  }
+
+  switch (file.type) {
+    case "image/png":
+      return "png";
+    case "image/gif":
+      return "gif";
+    case "image/webp":
+      return "webp";
+    default:
+      return "jpg";
+  }
+}
 
 export async function createEntityTimer(payload: z.infer<typeof createTimerSchema>) {
   const input = createTimerSchema.parse(payload);
@@ -62,6 +115,21 @@ export async function createEntityTimer(payload: z.infer<typeof createTimerSchem
 
   if (timerError) {
     throw timerError;
+  }
+
+  if (input.kind === "group" && input.members && input.members.length > 0) {
+    const membersPayload = input.members.map((member) => ({
+      name: member.name,
+      kind: "user" as const,
+      avatar_url: member.avatarUrl ?? null,
+      group_id: entity.id
+    }));
+
+    const { error: membersError } = await supabase.from("entities").insert(membersPayload);
+
+    if (membersError) {
+      throw membersError;
+    }
   }
 
   revalidatePath("/control");
@@ -147,6 +215,81 @@ export async function deleteTimer(payload: z.infer<typeof identifierSchema>) {
 
   revalidatePath("/control");
   revalidatePath("/display");
+}
+
+export async function addGroupMembersAction(payload: z.infer<typeof addGroupMembersSchema>) {
+  const input = addGroupMembersSchema.parse(payload);
+  const supabase = createServiceSupabaseClient();
+
+  const { data: group, error: groupFetchError } = await supabase
+    .from("entities")
+    .select("id, kind")
+    .eq("id", input.groupId)
+    .maybeSingle();
+
+  if (groupFetchError) {
+    throw groupFetchError;
+  }
+
+  if (!group || group.kind !== "group") {
+    throw new Error("Grupo não encontrado ou inválido.");
+  }
+
+  const rows = input.members.map((member) => ({
+    name: member.name,
+    kind: "user" as const,
+    avatar_url: member.avatarUrl ?? null,
+    group_id: group.id
+  }));
+
+  const { error: insertError } = await supabase.from("entities").insert(rows);
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  revalidatePath("/control");
+  revalidatePath("/display");
+}
+
+export async function uploadTimerAvatarAction(formData: FormData) {
+  const file = formData.get("file");
+
+  if (!(file instanceof File)) {
+    throw new Error("Ficheiro inválido.");
+  }
+
+  if (!file.type?.startsWith("image/")) {
+    throw new Error("Apenas imagens são permitidas.");
+  }
+
+  if (file.size > MAX_UPLOAD_SIZE) {
+    throw new Error("Ficheiro superior a 5MB.");
+  }
+
+  const supabase = createServiceSupabaseClient();
+
+  await ensureAvatarBucket(supabase);
+
+  const extension = inferFileExtension(file);
+  const filename = `${randomUUID()}.${extension}`;
+  const storagePath = `avatars/${filename}`;
+
+  const { error: uploadError } = await supabase.storage.from(AVATAR_BUCKET).upload(storagePath, file, {
+    cacheControl: "3600",
+    contentType: file.type || "image/jpeg",
+    upsert: false
+  });
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const {
+    data: { publicUrl }
+  } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(storagePath);
+
+  return { url: publicUrl, path: storagePath };
 }
 
 export async function resumeTimerAction(payload: z.infer<typeof identifierSchema>) {

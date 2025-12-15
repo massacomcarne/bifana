@@ -54,13 +54,21 @@ async function loadSnapshot(client: Supabase): Promise<TimersSnapshot> {
   }
 
   const groupsToFetch = new Set<string>();
+  const memberGroupsToFetch = new Set<string>();
   timersData?.forEach((timer) => {
     if (timer.entity.group_id) {
       groupsToFetch.add(timer.entity.group_id);
     }
+
+    if (timer.entity.kind === "group") {
+      memberGroupsToFetch.add(timer.entity.id);
+    } else if (timer.entity.kind === "user" && timer.entity.group_id) {
+      memberGroupsToFetch.add(timer.entity.group_id);
+    }
   });
 
   let groups: Record<string, Database["public"]["Tables"]["entities"]["Row"]> = {};
+  const membersMap = new Map<string, Database["public"]["Tables"]["entities"]["Row"][]>();
 
   if (groupsToFetch.size > 0) {
     const { data: groupRows, error: groupsError } = await client
@@ -77,11 +85,38 @@ async function loadSnapshot(client: Supabase): Promise<TimersSnapshot> {
     }
   }
 
+  if (memberGroupsToFetch.size > 0) {
+    const { data: memberRows, error: membersError } = await client
+      .from("entities")
+      .select("*")
+      .in("group_id", Array.from(memberGroupsToFetch))
+      .eq("kind", "user");
+
+    if (membersError) {
+      throw membersError;
+    }
+
+    memberRows?.forEach((member) => {
+      if (!member.group_id) {
+        return;
+      }
+      const list = membersMap.get(member.group_id) ?? [];
+      list.push(member);
+      membersMap.set(member.group_id, list);
+    });
+  }
+
   return {
     timers:
       timersData?.map((timer) => ({
         ...timer,
-        group: timer.entity.group_id ? groups[timer.entity.group_id] ?? null : null
+        group: timer.entity.group_id ? groups[timer.entity.group_id] ?? null : null,
+        members:
+          timer.entity.kind === "group"
+            ? membersMap.get(timer.entity.id) ?? []
+            : timer.entity.group_id
+              ? membersMap.get(timer.entity.group_id) ?? []
+              : []
       })) ?? [],
     activeTimerId: sessionData?.active_timer_id ?? null
   } satisfies TimersSnapshot;
