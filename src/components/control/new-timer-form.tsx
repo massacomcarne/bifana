@@ -10,6 +10,7 @@ import {
   useState,
   useTransition
 } from "react";
+import Image from "next/image";
 import { PlusCircle, Trash2, Upload, X } from "lucide-react";
 import type { TimerWithEntity } from "@/lib/timers/types";
 import { cn } from "@/lib/utils";
@@ -534,7 +535,14 @@ function AvatarUploader({
       <div className="flex items-center gap-3">
         <div className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-border bg-muted text-xs text-muted-foreground">
           {currentUrl ? (
-            <img src={currentUrl} alt="Pré-visualização" className="h-full w-full rounded-full object-cover" />
+            <Image
+              src={currentUrl}
+              alt="Pré-visualização"
+              width={64}
+              height={64}
+              className="h-full w-full rounded-full object-cover"
+              unoptimized
+            />
           ) : (
             <span>Sem foto</span>
           )}
@@ -594,7 +602,14 @@ function MemberRow({
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-full border border-dashed border-border bg-muted text-xs text-muted-foreground">
           {draft.avatarUrl ? (
-            <img src={draft.avatarUrl} alt="Pré-visualização" className="h-full w-full rounded-full object-cover" />
+            <Image
+              src={draft.avatarUrl}
+              alt="Pré-visualização"
+              width={48}
+              height={48}
+              className="h-full w-full rounded-full object-cover"
+              unoptimized
+            />
           ) : (
             <span>Foto</span>
           )}

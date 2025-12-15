@@ -75,22 +75,12 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
     return defaultCard ?? cardTimers[0];
   }, [cardTimers, snapshot.activeTimerId]);
 
-  if (!activeCard) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
-        <p className="text-2xl font-semibold text-muted-foreground">Nenhum cronómetro configurado.</p>
-        <p className="mt-2 max-w-md text-muted-foreground/80">
-          Adicione cronómetros na página de controlo para começar a projetar os tempos em tempo real.
-        </p>
-      </div>
-    );
-  }
-
-  const activeRemaining = getRemainingSeconds(activeCard.timer, now);
-  const activeOverrun = getOverrunSeconds(activeCard.timer, now);
   const otherCards = useMemo(() => {
-    const activeId = activeCard.id;
-    const remainingCards = cardTimers.filter((card) => card.id !== activeId);
+    if (!activeCard) {
+      return [];
+    }
+
+    const remainingCards = cardTimers.filter((card) => card.id !== activeCard.id);
 
     return remainingCards
       .map((card, index) => {
@@ -115,7 +105,21 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
         return diff !== 0 ? diff : a.index - b.index;
       })
       .map((entry) => entry.card);
-  }, [activeCard.id, cardTimers, now]);
+  }, [activeCard, cardTimers, now]);
+
+  if (!activeCard) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
+        <p className="text-2xl font-semibold text-muted-foreground">Nenhum cronómetro configurado.</p>
+        <p className="mt-2 max-w-md text-muted-foreground/80">
+          Adicione cronómetros na página de controlo para começar a projetar os tempos em tempo real.
+        </p>
+      </div>
+    );
+  }
+
+  const activeRemaining = getRemainingSeconds(activeCard.timer, now);
+  const activeOverrun = getOverrunSeconds(activeCard.timer, now);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted text-foreground">

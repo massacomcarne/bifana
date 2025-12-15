@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import type { ComponentType } from "react";
 import { Check, CheckCircle2, Pause, Pencil, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { useNow } from "@/lib/hooks/use-now";
@@ -48,19 +48,19 @@ export function TimerControlCard({
   const statusDescription = running ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado";
   const StatusIcon = running ? Play : timer.status === "finished" ? CheckCircle2 : Pause;
 
-  const syncInputsFromTimer = () => {
+  const syncInputsFromTimer = useCallback(() => {
     const minutes = Math.floor(timer.duration_seconds / 60);
     const seconds = timer.duration_seconds % 60;
     setMinuteInput(minutes.toString());
     setSecondInput(seconds.toString().padStart(2, "0"));
-  };
+  }, [timer.duration_seconds]);
 
   useEffect(() => {
     if (isEditing) {
       return;
     }
     syncInputsFromTimer();
-  }, [timer.duration_seconds, isEditing]);
+  }, [isEditing, syncInputsFromTimer]);
 
   const handleResume = () => startTransition(() => void onResume(timer.id));
   const handlePause = () => startTransition(() => void onPause(timer.id));
