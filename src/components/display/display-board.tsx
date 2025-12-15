@@ -30,7 +30,7 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
 
   const cardTimers = useMemo<CardTimer[]>(() => {
     return sortedTimers.flatMap((timer) => {
-      const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.is_default;
+      const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.status === "running";
       const timerAccent = timer.entity.kind === "group"
         ? timer.entity.accent_color
         : timer.group?.accent_color ?? timer.entity.accent_color ?? null;
