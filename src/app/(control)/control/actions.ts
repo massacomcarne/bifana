@@ -17,8 +17,17 @@ const createTimerSchema = z.object({
   kind: z.enum(entityKinds),
   durationSeconds: z.number().int().min(10, "O tempo mínimo é 10 segundos"),
   avatarUrl: z.string().url().nullable().optional(),
+  accentColor: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{6})$/, "Cor inválida")
+    .nullable()
+    .optional(),
   groupId: z.string().uuid().nullable().optional(),
   members: z.array(memberSchema).max(20).optional()
+}).superRefine((data, ctx) => {
+  if (data.kind === "group" && data.name.trim().length > 13) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "O nome do grupo não pode exceder 13 caracteres.", path: ["name"] });
+  }
 });
 
 const updateTimerSchema = z.object({
@@ -26,6 +35,11 @@ const updateTimerSchema = z.object({
   durationSeconds: z.number().int().min(10),
   name: z.string().min(1),
   avatarUrl: z.string().url().nullable().optional(),
+  accentColor: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{6})$/)
+    .nullable()
+    .optional(),
   groupId: z.string().uuid().nullable().optional()
 });
 
@@ -35,7 +49,12 @@ const identifierSchema = z.object({
 
 const addGroupMembersSchema = z.object({
   groupId: z.string().uuid(),
-  members: z.array(memberSchema).min(1, "Introduza pelo menos um membro").max(50)
+  members: z.array(memberSchema).max(50).optional(),
+  accentColor: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{6})$/)
+    .nullable()
+    .optional()
 });
 
 const updateTimerDurationSchema = z.object({
@@ -43,10 +62,33 @@ const updateTimerDurationSchema = z.object({
   durationSeconds: z.number().int().min(10)
 });
 
+const updateThemeTextSchema = z.object({
+  themeText: z
+    .string()
+    .trim()
+    .max(200, "Texto demasiado longo")
+    .transform((value) => value.trim())
+});
+
 const AVATAR_BUCKET = "timer-avatars";
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
 
 type ServiceSupabase = ReturnType<typeof createServiceSupabaseClient>;
+
+function normalizeThemeUpdateError(error: unknown) {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: string }).code;
+    if (code === "PGRST204") {
+      return new Error("A base de dados ainda não tem a coluna 'theme_text'. Execute 'supabase db push' e tente novamente.");
+    }
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error("Não foi possível atualizar o tema.");
+}
 
 async function ensureAvatarBucket(supabase: ServiceSupabase) {
   const { error } = await supabase.storage.createBucket(AVATAR_BUCKET, {
@@ -60,7 +102,12 @@ async function ensureAvatarBucket(supabase: ServiceSupabase) {
     ]
   });
 
-  if (error && error.message !== "Bucket already exists") {
+  if (
+    error &&
+    error.message !== "Bucket already exists" &&
+    error.message !== "The resource already exists" &&
+    ("status" in error ? error.status !== 409 : true)
+  ) {
     // Ignore bucket already exists error, bubble others
     throw error;
   }
@@ -88,6 +135,10 @@ export async function createEntityTimer(payload: z.infer<typeof createTimerSchem
   const input = createTimerSchema.parse(payload);
   const supabase = createServiceSupabaseClient();
 
+  if (input.kind === "group" && input.name.trim().length > 13) {
+    throw new Error("O nome do grupo não pode exceder 13 caracteres.");
+  }
+
   const { data: lastTimer } = await supabase
     .from("timers")
     .select("order_index")
@@ -103,6 +154,7 @@ export async function createEntityTimer(payload: z.infer<typeof createTimerSchem
       name: input.name,
       kind: input.kind,
       avatar_url: input.avatarUrl ?? null,
+      accent_color: input.accentColor ?? null,
       group_id: input.kind === "user" ? input.groupId ?? null : null
     })
     .select()
@@ -165,14 +217,24 @@ export async function updateEntityTimer(payload: z.infer<typeof updateTimerSchem
     throw entityFetchError;
   }
 
+  const entityPayload: Record<string, unknown> = {
+    name: input.name,
+    avatar_url: input.avatarUrl ?? null,
+    group_id: entity.kind === "user" ? input.groupId ?? null : null
+  };
+
+  if (entity.kind === "group" && input.name.trim().length > 13) {
+    throw new Error("O nome do grupo não pode exceder 13 caracteres.");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "accentColor")) {
+    entityPayload.accent_color = input.accentColor ?? null;
+  }
+
   const updates = [
     supabase
       .from("entities")
-      .update({
-        name: input.name,
-        avatar_url: input.avatarUrl ?? null,
-        group_id: entity.kind === "user" ? input.groupId ?? null : null
-      })
+      .update(entityPayload)
       .eq("id", timer.entity_id),
     supabase.from("timers").update({ duration_seconds: input.durationSeconds }).eq("id", input.timerId)
   ];
@@ -240,17 +302,30 @@ export async function addGroupMembersAction(payload: z.infer<typeof addGroupMemb
     throw new Error("Grupo não encontrado ou inválido.");
   }
 
-  const rows = input.members.map((member) => ({
+  const rows = (input.members ?? []).map((member) => ({
     name: member.name,
     kind: "user" as const,
     avatar_url: member.avatarUrl ?? null,
     group_id: group.id
   }));
 
-  const { error: insertError } = await supabase.from("entities").insert(rows);
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from("entities").insert(rows);
 
-  if (insertError) {
-    throw insertError;
+    if (insertError) {
+      throw insertError;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "accentColor")) {
+    const { error: updateError } = await supabase
+      .from("entities")
+      .update({ accent_color: input.accentColor ?? null })
+      .eq("id", group.id);
+
+    if (updateError) {
+      throw updateError;
+    }
   }
 
   revalidatePath("/control");
@@ -359,4 +434,45 @@ export async function updateTimerDurationAction(payload: z.infer<typeof updateTi
 
   revalidatePath("/control");
   revalidatePath("/display");
+}
+
+export async function updateThemeTextAction(payload: z.infer<typeof updateThemeTextSchema>) {
+  const input = updateThemeTextSchema.parse(payload);
+  const supabase = createServiceSupabaseClient();
+
+  const themeText = input.themeText.length > 0 ? input.themeText : null;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("session_state")
+    .select("id, active_timer_id")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw normalizeThemeUpdateError(fetchError);
+  }
+
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("session_state")
+      .update({ theme_text: themeText })
+      .eq("id", existing.id);
+
+    if (updateError) {
+      throw normalizeThemeUpdateError(updateError);
+    }
+  } else {
+    const { error: insertError } = await supabase
+      .from("session_state")
+      .insert({ id: 1, theme_text: themeText });
+
+    if (insertError) {
+      throw normalizeThemeUpdateError(insertError);
+    }
+  }
+
+  revalidatePath("/control");
+  revalidatePath("/display");
+
+  return { themeText: themeText ?? "" };
 }

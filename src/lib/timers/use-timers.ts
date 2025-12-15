@@ -34,6 +34,7 @@ async function loadSnapshot(client: Supabase): Promise<TimersSnapshot> {
           kind,
           name,
           avatar_url,
+          accent_color,
           group_id,
           created_at,
           updated_at
@@ -118,13 +119,14 @@ async function loadSnapshot(client: Supabase): Promise<TimersSnapshot> {
               ? membersMap.get(timer.entity.group_id) ?? []
               : []
       })) ?? [],
-    activeTimerId: sessionData?.active_timer_id ?? null
+    activeTimerId: sessionData?.active_timer_id ?? null,
+    themeText: sessionData?.theme_text ?? ""
   } satisfies TimersSnapshot;
 }
 
 export function useTimers(initial?: TimersSnapshot) {
   const supabase = useSupabase();
-  const [snapshot, setSnapshot] = useState<TimersSnapshot>(initial ?? { timers: [], activeTimerId: null });
+  const [snapshot, setSnapshot] = useState<TimersSnapshot>(initial ?? { timers: [], activeTimerId: null, themeText: "" });
   const channelRef = useRef<RealtimeChannel>(null);
   const loadingRef = useRef(false);
 

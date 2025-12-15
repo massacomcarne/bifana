@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import type { ComponentType } from "react";
-import { Check, Pause, Pencil, Play, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, CheckCircle2, Pause, Pencil, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { useNow } from "@/lib/hooks/use-now";
 import { getOverrunSeconds, getRemainingSeconds } from "@/lib/timers/helpers";
 import type { TimerWithEntity } from "@/lib/timers/types";
@@ -15,6 +15,7 @@ interface TimerControlCardProps {
   displayEntity: TimerWithEntity["entity"];
   label: string | null;
   isActive: boolean;
+  accentColor: string | null;
   onResume: (timerId: string) => Promise<void>;
   onPause: (timerId: string) => Promise<void>;
   onReset: (timerId: string) => Promise<void>;
@@ -27,6 +28,7 @@ export function TimerControlCard({
   displayEntity,
   label,
   isActive,
+  accentColor,
   onResume,
   onPause,
   onReset,
@@ -43,6 +45,8 @@ export function TimerControlCard({
   const remaining = getRemainingSeconds(timer, now);
   const overrun = getOverrunSeconds(timer, now);
   const running = timer.status === "running";
+  const statusDescription = running ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado";
+  const StatusIcon = running ? Play : timer.status === "finished" ? CheckCircle2 : Pause;
 
   const syncInputsFromTimer = () => {
     const minutes = Math.floor(timer.duration_seconds / 60);
@@ -126,33 +130,32 @@ export function TimerControlCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-2xl border bg-card/80 p-4 shadow-sm backdrop-blur transition",
-        isActive ? "border-accent ring-2 ring-accent/40" : "border-border",
+        "flex flex-col items-center gap-3 rounded-2xl border bg-card/80 p-4 text-center shadow-sm backdrop-blur transition",
+        isActive ? "border-accent ring-4 ring-accent/50" : "border-border",
         isPending ? "opacity-80" : "opacity-100"
       )}
     >
-      <div className="flex items-center gap-3">
-        <TimerAvatar name={displayEntity.name} avatarUrl={displayEntity.avatar_url} size={48} />
-        <div className="flex flex-col">
-          <h3 className="text-lg font-semibold leading-tight">{displayEntity.name}</h3>
+      <div className="flex w-full items-center gap-3">
+        <div className="flex-shrink-0">
+          <TimerAvatar name={displayEntity.name} avatarUrl={displayEntity.avatar_url} size={48} accentColor={accentColor ?? undefined} />
+        </div>
+        <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+          <h3 className="w-full break-words text-lg font-semibold leading-tight">{displayEntity.name}</h3>
           {label ? (
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+            <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
           ) : null}
-          <span className="mt-2 inline-flex w-fit items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {running ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado"}
-          </span>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex w-full flex-wrap items-center justify-center gap-4">
         <CircularTimer
           size={140}
           remainingSeconds={remaining}
           durationSeconds={timer.duration_seconds}
           overrunSeconds={overrun}
         />
-        <div className="flex flex-1 flex-col gap-2">
-          <div className="flex items-center gap-1.5">
+        <div className="flex w-full max-w-xl flex-col items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
             <ControlButton
               icon={running ? Pause : Play}
               label={running ? "Pausar" : "Iniciar"}
@@ -165,8 +168,8 @@ export function TimerControlCard({
             <ControlButton icon={Trash2} label="Remover" onClick={handleDelete} disabled={isPending} danger />
           </div>
           {isEditing ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-end gap-3">
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-wrap items-end justify-center gap-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor={`minutes-${timer.id}`}>
                     Minutos
@@ -200,14 +203,16 @@ export function TimerControlCard({
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
                 <ControlButton icon={Check} label="Guardar duração" onClick={handleEditSave} disabled={isPending} />
                 <ControlButton icon={X} label="Cancelar edição" onClick={handleEditCancel} disabled={isPending} variant="secondary" />
               </div>
               {editError ? <p className="text-xs font-semibold text-destructive">{editError}</p> : null}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <span className="sr-only">{statusDescription}</span>
+              <StatusIcon className="h-4 w-4 text-accent" aria-hidden />
               Tempo configurado: {Math.floor(timer.duration_seconds / 60)}m {timer.duration_seconds % 60}s
             </p>
           )}

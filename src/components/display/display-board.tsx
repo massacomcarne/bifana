@@ -17,6 +17,10 @@ interface DisplayBoardProps {
 export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
   const { snapshot } = useTimers(initialSnapshot);
   const now = useNow();
+  const formattedDate = now.toLocaleDateString("pt-PT", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const formattedTime = now.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" });
+  const themeHeadingTrimmed = snapshot.themeText.trim();
+  const themedHeading = themeHeadingTrimmed.length > 0 ? themeHeadingTrimmed : "Gestão de Cronómetros";
 
   const sortedTimers = useMemo(
     () =>
@@ -27,6 +31,9 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
   const cardTimers = useMemo<CardTimer[]>(() => {
     return sortedTimers.flatMap((timer) => {
       const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.is_default;
+      const timerAccent = timer.entity.kind === "group"
+        ? timer.entity.accent_color
+        : timer.group?.accent_color ?? timer.entity.accent_color ?? null;
 
       if (timer.members.length > 0) {
         return timer.members.map<CardTimer>((member) => ({
@@ -34,7 +41,8 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           timer,
           displayEntity: member,
           label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
-          isActive
+          isActive,
+          accentColor: timer.entity.kind === "group" ? timer.entity.accent_color ?? null : timerAccent
         }));
       }
 
@@ -44,7 +52,8 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           timer,
           displayEntity: timer.entity,
           label: timer.group?.name ?? null,
-          isActive
+          isActive,
+          accentColor: timerAccent
         }
       ];
     });
@@ -79,18 +88,50 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
 
   const activeRemaining = getRemainingSeconds(activeCard.timer, now);
   const activeOverrun = getOverrunSeconds(activeCard.timer, now);
-  const otherCards = cardTimers.filter((card) => card.id !== activeCard.id);
+  const otherCards = useMemo(() => {
+    const activeId = activeCard.id;
+    const remainingCards = cardTimers.filter((card) => card.id !== activeId);
+
+    return remainingCards
+      .map((card, index) => {
+        const remaining = getRemainingSeconds(card.timer, now);
+        const overrun = getOverrunSeconds(card.timer, now);
+        const statusKey = remaining > 0 ? 0 : 1;
+        const sortValue = remaining > 0 ? remaining : overrun;
+
+        return { card, sortKey: statusKey, sortValue, remaining, overrun, index } as const;
+      })
+      .sort((a, b) => {
+        if (a.sortKey !== b.sortKey) {
+          return a.sortKey - b.sortKey;
+        }
+
+        if (a.sortKey === 0) {
+          const diff = b.remaining - a.remaining;
+          return diff !== 0 ? diff : a.index - b.index;
+        }
+
+        const diff = a.overrun - b.overrun;
+        return diff !== 0 ? diff : a.index - b.index;
+      })
+      .map((entry) => entry.card);
+  }, [activeCard.id, cardTimers, now]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted text-foreground">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-12">
-        <header className="flex flex-col items-center gap-4 text-center">
-          <div className="flex w-full flex-col items-center gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight">Gestão de Cronómetros</h1>
-              <p className="text-muted-foreground">Atualização em tempo real sincronizada com o painel de controlo.</p>
+      <div className="mx-auto flex w-full max-w-[80vw] flex-col gap-10 px-6 py-12">
+        <header className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-col gap-2">
+              <h1 className="text-4xl font-semibold tracking-tight text-left md:text-left">{themedHeading}</h1>
+              <p className="text-muted-foreground"></p>
             </div>
-            <ThemeToggle className="self-end" />
+            <div className="flex flex-col items-start gap-3 text-left md:items-end md:text-right">
+              <span className="text-2xl font-semibold uppercase tracking-wide text-black dark:text-slate-200">
+                {formattedDate} {formattedTime}
+              </span>
+              <ThemeToggle className="self-start md:self-end" />
+            </div>
           </div>
         </header>
 
@@ -103,12 +144,13 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
             className="drop-shadow-xl"
           />
           <div className="flex flex-col items-center gap-1 text-center">
-            <h2 className="text-3xl font-semibold">{activeCard.displayEntity.name}</h2>
             {activeCard.label ? (
-              <p className="text-sm uppercase tracking-wide text-muted-foreground">{activeCard.label}</p>
-            ) : null}
+              <p className="max-w-full break-words text-sm uppercase tracking-wide text-muted-foreground">{activeCard.label}</p>
+            ) : (
+              <h2 className="max-w-full break-words text-3xl font-semibold">{activeCard.displayEntity.name}</h2>
+            )}
             {activeCard.timer.members.length > 0 ? (
-              <div className="mt-1 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+              <div className="mt-1 flex max-w-full flex-wrap justify-center gap-2 text-xs text-muted-foreground">
                 {activeCard.timer.members.map((member) => (
                   <span key={member.id} className="rounded-full bg-muted px-3 py-1 font-semibold uppercase tracking-wide">
                     {member.name}
@@ -119,7 +161,7 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           </div>
         </section>
 
-        <section className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-6")}>
+        <section className="grid w-full gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           {otherCards.map((card) => {
             const remaining = getRemainingSeconds(card.timer, now);
             const overrun = getOverrunSeconds(card.timer, now);
@@ -127,36 +169,34 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
               <article
                 key={card.id}
                 className={cn(
-                  "flex items-center gap-4 rounded-2xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur transition",
+                  "flex flex-col items-center gap-4 rounded-2xl border border-border bg-card/80 p-4 text-center shadow-sm backdrop-blur transition",
                   card.isActive ? "ring-2 ring-emerald-400" : "ring-0"
                 )}
               >
-                <TimerAvatar name={card.displayEntity.name} avatarUrl={card.displayEntity.avatar_url} size={68} />
-                <div className="flex flex-1 flex-col gap-2">
-                  <div className="flex items-baseline justify-between">
-                    <div>
-                      <p className="text-base font-semibold leading-none">{card.displayEntity.name}</p>
-                      {card.label ? (
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">{card.label}</p>
-                      ) : null}
-                    </div>
-                    <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium uppercase text-muted-foreground">
-                      {card.timer.status === "running"
-                        ? "Em curso"
-                        : card.timer.status === "finished"
-                          ? "Terminado"
-                          : "Pausado"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <CircularTimer
-                      size={160}
-                      remainingSeconds={remaining}
-                      durationSeconds={card.timer.duration_seconds}
-                      overrunSeconds={overrun}
-                      valueClassName="text-lg"
+                <div className="grid w-full grid-cols-[auto,1fr] items-center gap-3">
+                  <div className="flex-shrink-0">
+                    <TimerAvatar
+                      name={card.displayEntity.name}
+                      avatarUrl={card.displayEntity.avatar_url}
+                      size={56}
+                      accentColor={card.accentColor ?? undefined}
                     />
                   </div>
+                  <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+                    <p className="w-full break-words text-base font-semibold leading-none">{card.displayEntity.name}</p>
+                    {card.label ? (
+                      <p className="w-full break-words text-xs uppercase tracking-wide text-muted-foreground">{card.label}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex justify-center">
+                  <CircularTimer
+                    size={180}
+                    remainingSeconds={remaining}
+                    durationSeconds={card.timer.duration_seconds}
+                    overrunSeconds={overrun}
+                    valueClassName="text-lg"
+                  />
                 </div>
               </article>
             );
@@ -179,4 +219,5 @@ interface CardTimer {
   displayEntity: TimerWithEntity["entity"];
   label: string | null;
   isActive: boolean;
+  accentColor: string | null;
 }

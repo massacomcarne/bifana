@@ -68,7 +68,7 @@ function mapTimers(
 }
 
 export async function getTimersSnapshot(): Promise<TimersSnapshot> {
-  const fallback: TimersSnapshot = { timers: [], activeTimerId: null };
+  const fallback: TimersSnapshot = { timers: [], activeTimerId: null, themeText: "" };
 
   let supabase;
   try {
@@ -116,6 +116,7 @@ export async function getTimersSnapshot(): Promise<TimersSnapshot> {
 
   return {
     timers,
-    activeTimerId: sessionState?.active_timer_id ?? null
+    activeTimerId: sessionState?.active_timer_id ?? null,
+    themeText: sessionState?.theme_text ?? ""
   } satisfies TimersSnapshot;
 }

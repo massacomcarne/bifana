@@ -9,6 +9,7 @@ export type Database = {
           kind: "group" | "user";
           name: string;
           avatar_url: string | null;
+          accent_color: string | null;
           group_id: string | null;
           created_at: string;
           updated_at: string;
@@ -18,6 +19,7 @@ export type Database = {
           kind: "group" | "user";
           name: string;
           avatar_url?: string | null;
+          accent_color?: string | null;
           group_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -27,6 +29,7 @@ export type Database = {
           kind?: "group" | "user";
           name?: string;
           avatar_url?: string | null;
+          accent_color?: string | null;
           group_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -44,16 +47,19 @@ export type Database = {
         Row: {
           id: number;
           active_timer_id: string | null;
+          theme_text: string | null;
           updated_at: string;
         };
         Insert: {
           id?: number;
           active_timer_id?: string | null;
+          theme_text?: string | null;
           updated_at?: string;
         };
         Update: {
           id?: number;
           active_timer_id?: string | null;
+          theme_text?: string | null;
           updated_at?: string;
         };
         Relationships: [

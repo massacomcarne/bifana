@@ -5,6 +5,7 @@ import type { TimerWithEntity, TimersSnapshot } from "@/lib/timers/types";
 import { useTimers } from "@/lib/timers/use-timers";
 import { TimerControlCard } from "@/components/control/timer-control-card";
 import { NewTimerDialog } from "@/components/control/new-timer-form";
+import { useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   addGroupMembersAction,
@@ -13,6 +14,7 @@ import {
   pauseTimerAction,
   resetTimerAction,
   resumeTimerAction,
+  updateThemeTextAction,
   updateTimerDurationAction
 } from "@/app/(control)/control/actions";
 
@@ -21,7 +23,11 @@ interface ControlBoardProps {
 }
 
 export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
-  const { snapshot } = useTimers(initialSnapshot);
+  const { snapshot, refresh } = useTimers(initialSnapshot);
+  const [themeDialogOpen, setThemeDialogOpen] = useState(false);
+  const [themeText, setThemeText] = useState(initialSnapshot.themeText ?? "");
+  const [updatingTheme, setUpdatingTheme] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
 
   const sortedTimers = useMemo(
     () =>
@@ -32,6 +38,9 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
   const cardTimers = useMemo<CardTimer[]>(() => {
     return sortedTimers.flatMap((timer) => {
       const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.is_default;
+      const timerAccent = timer.entity.kind === "group"
+        ? timer.entity.accent_color
+        : timer.group?.accent_color ?? timer.entity.accent_color ?? null;
 
       if (timer.members.length > 0) {
         return timer.members.map<CardTimer>((member) => ({
@@ -39,7 +48,8 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
           timer,
           displayEntity: member,
           label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
-          isActive
+          isActive,
+          accentColor: timer.entity.kind === "group" ? timer.entity.accent_color ?? null : timerAccent
         }));
       }
 
@@ -49,7 +59,8 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
           timer,
           displayEntity: timer.entity,
           label: timer.group?.name ?? null,
-          isActive
+          isActive,
+          accentColor: timerAccent
         }
       ];
     });
@@ -79,6 +90,7 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
     name: string;
     durationSeconds: number;
     avatarUrl?: string | null;
+    accentColor?: string | null;
     members?: Array<{ name: string; avatarUrl?: string | null }>;
   }) => {
     await createEntityTimer({
@@ -86,6 +98,7 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
       kind: "group",
       durationSeconds: payload.durationSeconds,
       avatarUrl: payload.avatarUrl ?? undefined,
+      accentColor: payload.accentColor ?? undefined,
       members: payload.members
     });
   };
@@ -109,16 +122,92 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
           </div>
         </header>
 
-        <NewTimerDialog existingTimers={sortedTimers} onCreateGroup={handleCreateGroup} onAddMembers={handleAddMembers} />
+        <div className="flex flex-wrap items-center gap-3">
+          <NewTimerDialog existingTimers={sortedTimers} onCreateGroup={handleCreateGroup} onAddMembers={handleAddMembers} />
+          <button
+            type="button"
+            onClick={() => {
+              setThemeError(null);
+              setThemeText(snapshot.themeText ?? "");
+              setThemeDialogOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent"
+          >
+            Editar tema
+          </button>
+          <span className="text-sm text-muted-foreground">
+            {snapshot.themeText?.trim()
+              ? `Tema atual: ${snapshot.themeText.trim()}`
+              : "Sem tema definido"}
+          </span>
+        </div>
+
+        {themeDialogOpen ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 py-12">
+            <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold">Editar tema do display</h2>
+              <p className="mt-1 text-sm text-muted-foreground">O texto introdutório no ecrã de projeção será atualizado imediatamente.</p>
+              <form
+                className="mt-4 flex flex-col gap-3"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  setUpdatingTheme(true);
+                  setThemeError(null);
+                  try {
+                    const result = await updateThemeTextAction({ themeText });
+                    setThemeText(result.themeText);
+                    await refresh();
+                    setThemeDialogOpen(false);
+                  } catch (error) {
+                    console.error(error);
+                    setThemeError(error instanceof Error ? error.message : "Não foi possível atualizar o tema.");
+                  } finally {
+                    setUpdatingTheme(false);
+                  }
+                }}
+              >
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Texto do cabeçalho
+                  <input
+                    type="text"
+                    value={themeText}
+                    onChange={(event) => setThemeText(event.target.value)}
+                    className="rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                    placeholder="Ex: Batalha de Apresentações"
+                    maxLength={200}
+                  />
+                </label>
+                {themeError ? <p className="text-sm text-destructive">{themeError}</p> : null}
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setThemeDialogOpen(false)}
+                    className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition hover:bg-muted"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingTheme}
+                    className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition hover:bg-accent/90 disabled:opacity-60"
+                  >
+                    OK
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {cardTimers.map(({ id, timer, displayEntity, label, isActive }) => (
+          {cardTimers.map(({ id, timer, displayEntity, label, isActive, accentColor }) => (
             <TimerControlCard
               key={id}
               timer={timer}
               displayEntity={displayEntity}
               label={label}
               isActive={isActive}
+              accentColor={accentColor}
               onResume={handleResume}
               onPause={handlePause}
               onReset={handleReset}
@@ -144,4 +233,5 @@ interface CardTimer {
   displayEntity: TimerWithEntity["entity"];
   label: string | null;
   isActive: boolean;
+  accentColor: string | null;
 }

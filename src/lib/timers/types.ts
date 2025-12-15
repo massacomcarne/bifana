@@ -12,6 +12,7 @@ export interface TimerWithEntity extends TimerRow {
 export interface TimersSnapshot {
   timers: TimerWithEntity[];
   activeTimerId: string | null;
+  themeText: string;
 }
 
 export type { TimerStatus };

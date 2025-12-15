@@ -5,6 +5,7 @@ import {
   type Dispatch,
   type FormEvent,
   type SetStateAction,
+  useEffect,
   useMemo,
   useState,
   useTransition
@@ -26,15 +27,17 @@ interface NewTimerDialogProps {
     name: string;
     durationSeconds: number;
     avatarUrl?: string | null;
+    accentColor?: string | null;
     members?: Array<{ name: string; avatarUrl?: string | null }>;
   }) => Promise<void>;
   onAddMembers: (payload: {
     groupId: string;
-    members: Array<{ name: string; avatarUrl?: string | null }>;
+    members?: Array<{ name: string; avatarUrl?: string | null }>;
+    accentColor?: string | null;
   }) => Promise<void>;
 }
 
-type DialogMode = "group" | "member";
+type DialogMode = "group" | "edit";
 
 function generateId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -50,10 +53,12 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
   const [seconds, setSeconds] = useState(0);
   const [groupName, setGroupName] = useState("");
   const [groupAvatarUrl, setGroupAvatarUrl] = useState<string | null>(null);
+  const [groupColor, setGroupColor] = useState<string>("#22c55e");
   const [groupMembers, setGroupMembers] = useState<MemberDraft[]>([]);
 
-  const [memberGroupId, setMemberGroupId] = useState<string>("");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [memberDrafts, setMemberDrafts] = useState<MemberDraft[]>([]);
+  const [editGroupColor, setEditGroupColor] = useState<string>("#22c55e");
 
   const [error, setError] = useState<string | null>(null);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
@@ -65,13 +70,16 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
   );
 
   const resetState = () => {
+    setMode("group");
     setGroupName("");
     setMinutes(1);
     setSeconds(0);
     setGroupAvatarUrl(null);
+    setGroupColor("#22c55e");
     setGroupMembers([]);
     setMemberDrafts([]);
-    setMemberGroupId("");
+    setSelectedGroupId("");
+    setEditGroupColor("#22c55e");
     setError(null);
   };
 
@@ -111,6 +119,17 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
     event.preventDefault();
     setError(null);
 
+    const trimmedName = groupName.trim();
+    if (trimmedName.length === 0) {
+      setError("Indique um nome para o grupo.");
+      return;
+    }
+
+    if (trimmedName.length > 13) {
+      setError("Os nomes dos grupos não podem exceder 13 caracteres.");
+      return;
+    }
+
     const totalSeconds = minutes * 60 + seconds;
     if (totalSeconds <= 0) {
       setError("Defina um tempo superior a zero.");
@@ -127,9 +146,10 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
     startTransition(async () => {
       try {
         await onCreateGroup({
-          name: groupName.trim(),
+          name: trimmedName,
           durationSeconds: totalSeconds,
           avatarUrl: groupAvatarUrl ?? undefined,
+          accentColor: groupColor,
           members: membersPayload.length > 0 ? membersPayload : undefined
         });
         closeDialog();
@@ -143,7 +163,7 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
     event.preventDefault();
     setError(null);
 
-    if (!memberGroupId) {
+    if (!selectedGroupId) {
       setError("Selecione um grupo.");
       return;
     }
@@ -155,16 +175,12 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
       }))
       .filter((member) => member.name.length > 0);
 
-    if (membersPayload.length === 0) {
-      setError("Introduza pelo menos um membro.");
-      return;
-    }
-
     startTransition(async () => {
       try {
         await onAddMembers({
-          groupId: memberGroupId,
-          members: membersPayload
+          groupId: selectedGroupId,
+          members: membersPayload.length > 0 ? membersPayload : undefined,
+          accentColor: editGroupColor
         });
         closeDialog();
       } catch (actionError) {
@@ -184,10 +200,12 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
             onChange={(event) => setGroupName(event.target.value)}
             minLength={1}
             required
+            maxLength={13}
             className="rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             placeholder="Equipa A"
             disabled={isPending}
           />
+          <span className="text-xs text-muted-foreground">Limite máximo de 13 caracteres para garantir uma apresentação correta no ecrã.</span>
         </label>
         <AvatarUploader
           label="Fotografia do grupo"
@@ -199,7 +217,7 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <label className="flex flex-col gap-2">
           <span className="text-sm font-medium">Minutos</span>
           <input
@@ -220,6 +238,16 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
             value={seconds}
             onChange={(event) => setSeconds(Math.min(59, Math.max(0, Number(event.target.value) || 0)))}
             className="rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            disabled={isPending}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Cor do grupo</span>
+          <input
+            type="color"
+            value={groupColor}
+            onChange={(event) => setGroupColor(event.target.value)}
+            className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background p-1"
             disabled={isPending}
           />
         </label>
@@ -283,14 +311,28 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
     </form>
   );
 
+  useEffect(() => {
+    if (!selectedGroupId) {
+      setEditGroupColor("#22c55e");
+      return;
+    }
+
+    const selected = groups.find((group) => group.entity.id === selectedGroupId);
+    if (selected) {
+      setEditGroupColor(selected.entity.accent_color ?? "#22c55e");
+    } else {
+      setEditGroupColor("#22c55e");
+    }
+  }, [selectedGroupId, groups]);
+
   const renderMemberForm = () => (
     <form className="flex flex-col gap-5" onSubmit={handleSubmitMembers}>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="flex flex-col gap-2">
           <span className="text-sm font-medium">Grupo</span>
           <select
-            value={memberGroupId}
-            onChange={(event) => setMemberGroupId(event.target.value)}
+            value={selectedGroupId}
+            onChange={(event) => setSelectedGroupId(event.target.value)}
             className="rounded-lg border border-border bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             disabled={isPending || groups.length === 0}
             required
@@ -308,6 +350,16 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
             <span className="text-xs text-muted-foreground">Crie primeiro um grupo para associar membros.</span>
           ) : null}
         </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-sm font-medium">Cor do grupo</span>
+          <input
+            type="color"
+            value={editGroupColor}
+            onChange={(event) => setEditGroupColor(event.target.value)}
+            className="h-10 w-full cursor-pointer rounded-lg border border-border bg-background p-1"
+            disabled={isPending || !selectedGroupId}
+          />
+        </label>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -324,7 +376,7 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
         </div>
 
         {memberDrafts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Adicione pelo menos um membro para partilhar o cronómetro do grupo.</p>
+          <p className="text-sm text-muted-foreground">Pode apenas atualizar a cor ou adicionar novos membros conforme necessário.</p>
         ) : null}
 
         <div className="flex flex-col gap-3">
@@ -357,7 +409,7 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
           Cancelar
         </DialogButton>
         <DialogButton type="submit" variant="primary" disabled={isPending || groups.length === 0}>
-          Adicionar membros
+          Guardar alterações
         </DialogButton>
       </div>
     </form>
@@ -388,14 +440,14 @@ export function NewTimerDialog({ existingTimers, onCreateGroup, onAddMembers }: 
             <header className="mb-4 flex flex-col gap-2 pr-8">
               <h2 className="text-2xl font-semibold">Gerir cronómetros</h2>
               <p className="text-sm text-muted-foreground">
-                Crie um novo grupo com cronómetro partilhado ou associe membros a um grupo existente.
+                Crie um novo grupo com cronómetro partilhado ou edite um grupo existente, ajustando membros e cor.
               </p>
             </header>
 
             <div className="mb-5 flex gap-2 rounded-full bg-muted p-1">
               <ToggleButton active={mode === "group"} onClick={() => setMode("group")}>Novo grupo</ToggleButton>
-              <ToggleButton active={mode === "member"} onClick={() => setMode("member")}>
-                Adicionar membros
+              <ToggleButton active={mode === "edit"} onClick={() => setMode("edit")}>
+                Editar grupo
               </ToggleButton>
             </div>
 
