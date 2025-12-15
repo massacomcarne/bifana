@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TimerWithEntity, TimersSnapshot } from "@/lib/timers/types";
 import { useTimers } from "@/lib/timers/use-timers";
 import { TimerControlCard } from "@/components/control/timer-control-card";
 import { NewTimerDialog } from "@/components/control/new-timer-form";
-import { useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   addGroupMembersAction,
@@ -17,6 +16,8 @@ import {
   updateThemeTextAction,
   updateTimerDurationAction
 } from "@/app/(control)/control/actions";
+import { useNow } from "@/lib/hooks/use-now";
+import { getOverrunSeconds, getRemainingSeconds } from "@/lib/timers/helpers";
 
 interface ControlBoardProps {
   initialSnapshot: TimersSnapshot;
@@ -109,13 +110,14 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <TimerBuzzer timers={snapshot.timers} activeTimerId={snapshot.activeTimerId} />
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-12">
         <header className="flex flex-col gap-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-4xl font-semibold tracking-tight">Painel de Controlo</h1>
               <p className="text-muted-foreground">
-                Inicie, pause ou reorganize cronómetros. As alterações são refletidas automaticamente na projeção.
+                
               </p>
             </div>
             <ThemeToggle />
@@ -234,4 +236,114 @@ interface CardTimer {
   label: string | null;
   isActive: boolean;
   accentColor: string | null;
+}
+
+function TimerBuzzer({ timers, activeTimerId }: { timers: TimerWithEntity[]; activeTimerId: string | null }) {
+  const now = useNow();
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const timerStateRef = useRef(new Map<string, { zeroTriggered: boolean; lastMinuteIndex: number }>());
+
+  const playBeep = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return;
+    }
+
+    let context = audioContextRef.current;
+    if (!context) {
+      context = new AudioContextClass();
+      audioContextRef.current = context;
+    }
+
+    if (context.state === "suspended") {
+      void context.resume().catch(() => {});
+    }
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    gain.gain.setValueAtTime(0.2, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.2);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+  }, []);
+
+  useEffect(() => {
+    const stateMap = timerStateRef.current;
+    const activeTimers = activeTimerId
+      ? timers.filter((timer) => timer.id === activeTimerId)
+      : timers.filter((timer) => timer.status === "running");
+    const activeIds = new Set<string>();
+
+    if (activeTimers.length === 0) {
+      stateMap.clear();
+      return;
+    }
+
+    for (const timer of activeTimers) {
+      activeIds.add(timer.id);
+
+      if (timer.status !== "running") {
+        stateMap.set(timer.id, { zeroTriggered: false, lastMinuteIndex: -1 });
+        continue;
+      }
+
+      const remaining = getRemainingSeconds(timer, now);
+      const overrun = getOverrunSeconds(timer, now);
+
+      const state = stateMap.get(timer.id) ?? { zeroTriggered: false, lastMinuteIndex: -1 };
+
+      if (remaining > 0) {
+        state.zeroTriggered = false;
+        state.lastMinuteIndex = -1;
+        stateMap.set(timer.id, state);
+        continue;
+      }
+
+      if (!state.zeroTriggered) {
+        playBeep();
+        state.zeroTriggered = true;
+        state.lastMinuteIndex = 0;
+        stateMap.set(timer.id, state);
+        continue;
+      }
+
+      const minuteIndex = Math.floor(overrun / 60);
+      if (minuteIndex > state.lastMinuteIndex) {
+        playBeep();
+        state.lastMinuteIndex = minuteIndex;
+      }
+
+      stateMap.set(timer.id, state);
+    }
+
+    for (const key of Array.from(stateMap.keys())) {
+      if (!activeIds.has(key)) {
+        stateMap.delete(key);
+      }
+    }
+  }, [timers, activeTimerId, now, playBeep]);
+
+  useEffect(() => {
+    return () => {
+      const context = audioContextRef.current;
+      if (context) {
+        void context.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+    };
+  }, []);
+
+  return null;
 }

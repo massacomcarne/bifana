@@ -137,7 +137,12 @@ export function TimerControlCard({
     >
       <div className="flex w-full items-center gap-3">
         <div className="flex-shrink-0">
-          <TimerAvatar name={displayEntity.name} avatarUrl={displayEntity.avatar_url} size={48} accentColor={accentColor ?? undefined} />
+          <TimerAvatar
+            name={displayEntity.name}
+            avatarUrl={displayEntity.avatar_url ?? timer.entity.avatar_url ?? timer.group?.avatar_url ?? null}
+            size={48}
+            accentColor={accentColor ?? undefined}
+          />
         </div>
         <div className="flex min-w-0 flex-col items-start gap-0.5 text-left">
           <h3 className="w-full break-words text-lg font-semibold leading-tight">{displayEntity.name}</h3>

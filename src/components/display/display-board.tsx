@@ -165,6 +165,8 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           {otherCards.map((card) => {
             const remaining = getRemainingSeconds(card.timer, now);
             const overrun = getOverrunSeconds(card.timer, now);
+            const avatarUrl =
+              card.displayEntity.avatar_url ?? card.timer.entity.avatar_url ?? card.timer.group?.avatar_url ?? null;
             return (
               <article
                 key={card.id}
@@ -177,7 +179,7 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
                   <div className="flex-shrink-0">
                     <TimerAvatar
                       name={card.displayEntity.name}
-                      avatarUrl={card.displayEntity.avatar_url}
+                      avatarUrl={avatarUrl}
                       size={56}
                       accentColor={card.accentColor ?? undefined}
                     />
