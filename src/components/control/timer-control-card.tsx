@@ -1,8 +1,8 @@
 "use client";
 
+import { useEffect, useState, useTransition } from "react";
 import type { ComponentType } from "react";
-import { useTransition } from "react";
-import { Pause, Play, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Pause, Pencil, Play, RotateCcw, Trash2, X } from "lucide-react";
 import { useNow } from "@/lib/hooks/use-now";
 import { getOverrunSeconds, getRemainingSeconds } from "@/lib/timers/helpers";
 import type { TimerWithEntity } from "@/lib/timers/types";
@@ -12,68 +12,147 @@ import { cn } from "@/lib/utils";
 
 interface TimerControlCardProps {
   timer: TimerWithEntity;
+  displayEntity: TimerWithEntity["entity"];
+  label: string | null;
   isActive: boolean;
   onResume: (timerId: string) => Promise<void>;
   onPause: (timerId: string) => Promise<void>;
   onReset: (timerId: string) => Promise<void>;
   onDelete: (timerId: string) => Promise<void>;
+  onEditDuration: (timerId: string, durationSeconds: number) => Promise<void>;
 }
 
-export function TimerControlCard({ timer, isActive, onResume, onPause, onReset, onDelete }: TimerControlCardProps) {
+export function TimerControlCard({
+  timer,
+  displayEntity,
+  label,
+  isActive,
+  onResume,
+  onPause,
+  onReset,
+  onDelete,
+  onEditDuration
+}: TimerControlCardProps) {
   const now = useNow();
   const [isPending, startTransition] = useTransition();
+  const [isEditing, setIsEditing] = useState(false);
+  const [minuteInput, setMinuteInput] = useState(() => Math.floor(timer.duration_seconds / 60).toString());
+  const [secondInput, setSecondInput] = useState(() => (timer.duration_seconds % 60).toString().padStart(2, "0"));
+  const [editError, setEditError] = useState<string | null>(null);
 
   const remaining = getRemainingSeconds(timer, now);
   const overrun = getOverrunSeconds(timer, now);
   const running = timer.status === "running";
 
+  const syncInputsFromTimer = () => {
+    const minutes = Math.floor(timer.duration_seconds / 60);
+    const seconds = timer.duration_seconds % 60;
+    setMinuteInput(minutes.toString());
+    setSecondInput(seconds.toString().padStart(2, "0"));
+  };
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+    syncInputsFromTimer();
+  }, [timer.duration_seconds, isEditing]);
+
   const handleResume = () => startTransition(() => void onResume(timer.id));
   const handlePause = () => startTransition(() => void onPause(timer.id));
   const handleReset = () => startTransition(() => void onReset(timer.id));
   const handleDelete = () => startTransition(() => void onDelete(timer.id));
+  const handleEditClick = () => {
+    syncInputsFromTimer();
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const handleEditCancel = () => {
+    setIsEditing(false);
+    setEditError(null);
+    syncInputsFromTimer();
+  };
+
+  const handleEditSave = () => {
+    const minutesRaw = minuteInput.trim();
+    const secondsRaw = secondInput.trim();
+
+    const minutesValue = minutesRaw === "" ? 0 : Number.parseInt(minutesRaw, 10);
+    const secondsValue = secondsRaw === "" ? 0 : Number.parseInt(secondsRaw, 10);
+
+    if (!Number.isFinite(minutesValue) || minutesValue < 0) {
+      setEditError("Introduza minutos válidos.");
+      return;
+    }
+
+    if (!Number.isFinite(secondsValue) || secondsValue < 0 || secondsValue > 59) {
+      setEditError("Os segundos devem estar entre 0 e 59.");
+      return;
+    }
+
+    const totalSeconds = minutesValue * 60 + secondsValue;
+
+    if (totalSeconds < 10) {
+      setEditError("O tempo mínimo é 10 segundos.");
+      return;
+    }
+
+    if (totalSeconds === timer.duration_seconds) {
+      setIsEditing(false);
+      setEditError(null);
+      syncInputsFromTimer();
+      return;
+    }
+
+    setEditError(null);
+
+    const runUpdate = async () => {
+      try {
+        await onEditDuration(timer.id, totalSeconds);
+        setIsEditing(false);
+        setMinuteInput(minutesValue.toString());
+        setSecondInput(secondsValue.toString().padStart(2, "0"));
+      } catch (error) {
+        setEditError("Não foi possível atualizar o tempo.");
+      }
+    };
+
+    startTransition(() => {
+      void runUpdate();
+    });
+  };
 
   return (
     <article
       className={cn(
-        "flex flex-col gap-4 rounded-2xl border bg-card/80 p-6 shadow-sm backdrop-blur transition",
+        "flex flex-col gap-3 rounded-2xl border bg-card/80 p-4 shadow-sm backdrop-blur transition",
         isActive ? "border-accent ring-2 ring-accent/40" : "border-border",
         isPending ? "opacity-80" : "opacity-100"
       )}
     >
-      <div className="flex items-center gap-4">
-        <TimerAvatar name={timer.entity.name} avatarUrl={timer.entity.avatar_url} size={64} />
+      <div className="flex items-center gap-3">
+        <TimerAvatar name={displayEntity.name} avatarUrl={displayEntity.avatar_url} size={48} />
         <div className="flex flex-col">
-          <h3 className="text-xl font-semibold leading-tight">{timer.entity.name}</h3>
-          {timer.group ? (
-            <p className="text-sm uppercase tracking-wide text-muted-foreground">{timer.group.name}</p>
+          <h3 className="text-lg font-semibold leading-tight">{displayEntity.name}</h3>
+          {label ? (
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
           ) : null}
-          {timer.members.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {timer.members.map((member) => (
-                <span
-                  key={member.id}
-                  className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-                >
-                  {member.name}
-                </span>
-              ))}
-            </div>
-          ) : null}
-          <span className="mt-2 inline-flex w-fit items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="mt-2 inline-flex w-fit items-center rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {running ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado"}
           </span>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-6">
+      <div className="flex flex-wrap items-center gap-4">
         <CircularTimer
-          size={220}
+          size={140}
           remainingSeconds={remaining}
           durationSeconds={timer.duration_seconds}
           overrunSeconds={overrun}
         />
-        <div className="flex flex-1 flex-col gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-1 flex-col gap-2">
+          <div className="flex items-center gap-1.5">
             <ControlButton
               icon={running ? Pause : Play}
               label={running ? "Pausar" : "Iniciar"}
@@ -82,11 +161,56 @@ export function TimerControlCard({ timer, isActive, onResume, onPause, onReset, 
               variant={running ? "secondary" : "primary"}
             />
             <ControlButton icon={RotateCcw} label="Repor" onClick={handleReset} disabled={isPending} />
+            <ControlButton icon={Pencil} label="Editar duração" onClick={handleEditClick} disabled={isPending || isEditing} />
             <ControlButton icon={Trash2} label="Remover" onClick={handleDelete} disabled={isPending} danger />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Tempo configurado: {Math.floor(timer.duration_seconds / 60)}m {timer.duration_seconds % 60}s
-          </p>
+          {isEditing ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor={`minutes-${timer.id}`}>
+                    Minutos
+                  </label>
+                  <input
+                    id={`minutes-${timer.id}`}
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={minuteInput}
+                    onChange={(event) => setMinuteInput(event.target.value)}
+                    className="h-10 w-20 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    disabled={isPending}
+                  />
+                </div>
+                <span className="pb-2 text-lg font-semibold text-muted-foreground">:</span>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground" htmlFor={`seconds-${timer.id}`}>
+                    Segundos
+                  </label>
+                  <input
+                    id={`seconds-${timer.id}`}
+                    type="number"
+                    min={0}
+                    max={59}
+                    step={1}
+                    value={secondInput}
+                    onChange={(event) => setSecondInput(event.target.value)}
+                    className="h-10 w-20 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                    disabled={isPending}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ControlButton icon={Check} label="Guardar duração" onClick={handleEditSave} disabled={isPending} />
+                <ControlButton icon={X} label="Cancelar edição" onClick={handleEditCancel} disabled={isPending} variant="secondary" />
+              </div>
+              {editError ? <p className="text-xs font-semibold text-destructive">{editError}</p> : null}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Tempo configurado: {Math.floor(timer.duration_seconds / 60)}m {timer.duration_seconds % 60}s
+            </p>
+          )}
         </div>
       </div>
     </article>
@@ -108,8 +232,9 @@ function ControlButton({ icon: Icon, label, onClick, disabled, variant = "primar
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={label}
       className={cn(
-        "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
+        "inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold transition",
         variant === "primary" && !danger && "bg-accent text-accent-foreground hover:bg-accent/90",
         variant === "secondary" && !danger && "bg-muted text-foreground hover:bg-muted/80",
         danger && "bg-destructive text-destructive-foreground hover:bg-destructive/90",
@@ -117,7 +242,7 @@ function ControlButton({ icon: Icon, label, onClick, disabled, variant = "primar
       )}
     >
       <Icon className="h-4 w-4" />
-      {label}
+      <span className="sr-only">{label}</span>
     </button>
   );
 }

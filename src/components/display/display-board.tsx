@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useNow } from "@/lib/hooks/use-now";
 import { getOverrunSeconds, getRemainingSeconds } from "@/lib/timers/helpers";
-import type { TimersSnapshot } from "@/lib/timers/types";
+import type { TimerWithEntity, TimersSnapshot } from "@/lib/timers/types";
 import { useTimers } from "@/lib/timers/use-timers";
 import { CircularTimer } from "@/components/timers/circular-timer";
 import { TimerAvatar } from "@/components/timers/timer-avatar";
@@ -18,18 +18,55 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
   const { snapshot } = useTimers(initialSnapshot);
   const now = useNow();
 
-  const [activeTimer, otherTimers] = useMemo(() => {
-    if (snapshot.timers.length === 0) {
-      return [null, []] as const;
+  const sortedTimers = useMemo(
+    () =>
+      [...snapshot.timers].sort((a, b) => a.order_index - b.order_index || a.created_at.localeCompare(b.created_at)),
+    [snapshot.timers]
+  );
+
+  const cardTimers = useMemo<CardTimer[]>(() => {
+    return sortedTimers.flatMap((timer) => {
+      const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.is_default;
+
+      if (timer.members.length > 0) {
+        return timer.members.map<CardTimer>((member) => ({
+          id: `${timer.id}-${member.id}`,
+          timer,
+          displayEntity: member,
+          label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
+          isActive
+        }));
+      }
+
+      return [
+        {
+          id: timer.id,
+          timer,
+          displayEntity: timer.entity,
+          label: timer.group?.name ?? null,
+          isActive
+        }
+      ];
+    });
+  }, [sortedTimers, snapshot.activeTimerId]);
+
+  const activeCard = useMemo(() => {
+    if (cardTimers.length === 0) {
+      return null;
     }
 
-    const preferredActive = snapshot.timers.find((timer) => timer.id === snapshot.activeTimerId);
-    const fallback = preferredActive ?? snapshot.timers[0];
+    if (snapshot.activeTimerId) {
+      const match = cardTimers.find((card) => card.timer.id === snapshot.activeTimerId);
+      if (match) {
+        return match;
+      }
+    }
 
-    return [fallback, snapshot.timers.filter((timer) => timer.id !== fallback.id)] as const;
-  }, [snapshot.activeTimerId, snapshot.timers]);
+    const defaultCard = cardTimers.find((card) => card.isActive);
+    return defaultCard ?? cardTimers[0];
+  }, [cardTimers, snapshot.activeTimerId]);
 
-  if (!activeTimer) {
+  if (!activeCard) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
         <p className="text-2xl font-semibold text-muted-foreground">Nenhum cronómetro configurado.</p>
@@ -40,8 +77,9 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
     );
   }
 
-  const activeRemaining = getRemainingSeconds(activeTimer, now);
-  const activeOverrun = getOverrunSeconds(activeTimer, now);
+  const activeRemaining = getRemainingSeconds(activeCard.timer, now);
+  const activeOverrun = getOverrunSeconds(activeCard.timer, now);
+  const otherCards = cardTimers.filter((card) => card.id !== activeCard.id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted text-foreground">
@@ -60,18 +98,18 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           <CircularTimer
             size={360}
             remainingSeconds={activeRemaining}
-            durationSeconds={activeTimer.duration_seconds}
+            durationSeconds={activeCard.timer.duration_seconds}
             overrunSeconds={activeOverrun}
             className="drop-shadow-xl"
           />
           <div className="flex flex-col items-center gap-1 text-center">
-            <h2 className="text-3xl font-semibold">{activeTimer.entity.name}</h2>
-            {activeTimer.group ? (
-              <p className="text-sm uppercase tracking-wide text-muted-foreground">{activeTimer.group.name}</p>
+            <h2 className="text-3xl font-semibold">{activeCard.displayEntity.name}</h2>
+            {activeCard.label ? (
+              <p className="text-sm uppercase tracking-wide text-muted-foreground">{activeCard.label}</p>
             ) : null}
-            {activeTimer.members.length > 0 ? (
+            {activeCard.timer.members.length > 0 ? (
               <div className="mt-1 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
-                {activeTimer.members.map((member) => (
+                {activeCard.timer.members.map((member) => (
                   <span key={member.id} className="rounded-full bg-muted px-3 py-1 font-semibold uppercase tracking-wide">
                     {member.name}
                   </span>
@@ -81,48 +119,42 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
           </div>
         </section>
 
-        <section
-          className={cn(
-            "grid gap-6",
-            otherTimers.length <= 2 ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"
-          )}
-        >
-          {otherTimers.map((timer) => {
-            const remaining = getRemainingSeconds(timer, now);
-            const overrun = getOverrunSeconds(timer, now);
+        <section className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-6")}>
+          {otherCards.map((card) => {
+            const remaining = getRemainingSeconds(card.timer, now);
+            const overrun = getOverrunSeconds(card.timer, now);
             return (
               <article
-                key={timer.id}
-                className="flex items-center gap-4 rounded-2xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur"
+                key={card.id}
+                className={cn(
+                  "flex items-center gap-4 rounded-2xl border border-border bg-card/80 p-4 shadow-sm backdrop-blur transition",
+                  card.isActive ? "ring-2 ring-emerald-400" : "ring-0"
+                )}
               >
-                <TimerAvatar name={timer.entity.name} avatarUrl={timer.entity.avatar_url} size={68} />
-                <div className="flex flex-1 flex-col gap-3">
+                <TimerAvatar name={card.displayEntity.name} avatarUrl={card.displayEntity.avatar_url} size={68} />
+                <div className="flex flex-1 flex-col gap-2">
                   <div className="flex items-baseline justify-between">
                     <div>
-                      <p className="text-lg font-semibold leading-none">{timer.entity.name}</p>
-                      {timer.group ? (
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">{timer.group.name}</p>
-                      ) : null}
-                      {timer.members.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {timer.members.map((member) => (
-                            <span key={member.id} className="rounded-full bg-muted px-2 py-1 font-semibold">
-                              {member.name}
-                            </span>
-                          ))}
-                        </div>
+                      <p className="text-base font-semibold leading-none">{card.displayEntity.name}</p>
+                      {card.label ? (
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">{card.label}</p>
                       ) : null}
                     </div>
                     <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium uppercase text-muted-foreground">
-                      {timer.status === "running" ? "Em curso" : timer.status === "finished" ? "Terminado" : "Pausado"}
+                      {card.timer.status === "running"
+                        ? "Em curso"
+                        : card.timer.status === "finished"
+                          ? "Terminado"
+                          : "Pausado"}
                     </span>
                   </div>
                   <div className="flex items-center gap-4">
                     <CircularTimer
                       size={160}
                       remainingSeconds={remaining}
-                      durationSeconds={timer.duration_seconds}
+                      durationSeconds={card.timer.duration_seconds}
                       overrunSeconds={overrun}
+                      valueClassName="text-lg"
                     />
                   </div>
                 </div>
@@ -130,7 +162,7 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
             );
           })}
 
-          {otherTimers.length === 0 ? (
+          {otherCards.length === 0 ? (
             <p className="col-span-full text-center text-muted-foreground">
               Sem outros cronómetros ativos neste momento.
             </p>
@@ -139,4 +171,12 @@ export function DisplayBoard({ initialSnapshot }: DisplayBoardProps) {
       </div>
     </div>
   );
+}
+
+interface CardTimer {
+  id: string;
+  timer: TimerWithEntity;
+  displayEntity: TimerWithEntity["entity"];
+  label: string | null;
+  isActive: boolean;
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import type { TimerWithEntity, TimersSnapshot } from "@/lib/timers/types";
 import { useTimers } from "@/lib/timers/use-timers";
-import type { TimersSnapshot } from "@/lib/timers/types";
 import { TimerControlCard } from "@/components/control/timer-control-card";
 import { NewTimerDialog } from "@/components/control/new-timer-form";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -12,7 +12,8 @@ import {
   deleteTimer,
   pauseTimerAction,
   resetTimerAction,
-  resumeTimerAction
+  resumeTimerAction,
+  updateTimerDurationAction
 } from "@/app/(control)/control/actions";
 
 interface ControlBoardProps {
@@ -28,6 +29,32 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
     [snapshot.timers]
   );
 
+  const cardTimers = useMemo<CardTimer[]>(() => {
+    return sortedTimers.flatMap((timer) => {
+      const isActive = snapshot.activeTimerId ? snapshot.activeTimerId === timer.id : timer.is_default;
+
+      if (timer.members.length > 0) {
+        return timer.members.map<CardTimer>((member) => ({
+          id: `${timer.id}-${member.id}`,
+          timer,
+          displayEntity: member,
+          label: timer.entity.kind === "group" ? timer.entity.name : timer.group?.name ?? null,
+          isActive
+        }));
+      }
+
+      return [
+        {
+          id: timer.id,
+          timer,
+          displayEntity: timer.entity,
+          label: timer.group?.name ?? null,
+          isActive
+        }
+      ];
+    });
+  }, [sortedTimers, snapshot.activeTimerId]);
+
   const handleResume = async (timerId: string) => {
     await resumeTimerAction({ timerId });
   };
@@ -42,6 +69,10 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
 
   const handleDelete = async (timerId: string) => {
     await deleteTimer({ timerId });
+  };
+
+  const handleUpdateDuration = async (timerId: string, durationSeconds: number) => {
+    await updateTimerDurationAction({ timerId, durationSeconds });
   };
 
   const handleCreateGroup = async (payload: {
@@ -80,21 +111,24 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
 
         <NewTimerDialog existingTimers={sortedTimers} onCreateGroup={handleCreateGroup} onAddMembers={handleAddMembers} />
 
-        <section className="grid gap-6 xl:grid-cols-2">
-          {sortedTimers.map((timer) => (
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {cardTimers.map(({ id, timer, displayEntity, label, isActive }) => (
             <TimerControlCard
-              key={timer.id}
+              key={id}
               timer={timer}
-              isActive={timer.id === snapshot.activeTimerId}
+              displayEntity={displayEntity}
+              label={label}
+              isActive={isActive}
               onResume={handleResume}
               onPause={handlePause}
               onReset={handleReset}
               onDelete={handleDelete}
+              onEditDuration={handleUpdateDuration}
             />
           ))}
         </section>
 
-        {sortedTimers.length === 0 ? (
+        {cardTimers.length === 0 ? (
           <p className="text-center text-muted-foreground">
             Ainda não existem cronómetros. Utilize o formulário acima para começar.
           </p>
@@ -102,4 +136,12 @@ export function ControlBoard({ initialSnapshot }: ControlBoardProps) {
       </div>
     </div>
   );
+}
+
+interface CardTimer {
+  id: string;
+  timer: TimerWithEntity;
+  displayEntity: TimerWithEntity["entity"];
+  label: string | null;
+  isActive: boolean;
 }

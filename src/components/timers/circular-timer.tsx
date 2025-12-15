@@ -8,6 +8,9 @@ interface CircularTimerProps {
   overrunSeconds: number;
   label?: string;
   className?: string;
+  availableStrokeClassName?: string;
+  overrunStrokeClassName?: string;
+  valueClassName?: string;
 }
 
 export function CircularTimer({
@@ -16,7 +19,10 @@ export function CircularTimer({
   durationSeconds,
   overrunSeconds,
   label,
-  className
+  className,
+  availableStrokeClassName,
+  overrunStrokeClassName,
+  valueClassName
 }: CircularTimerProps) {
   const radius = size / 2 - 8;
   const circumference = 2 * Math.PI * radius;
@@ -28,7 +34,8 @@ export function CircularTimer({
   const dashOffset = circumference * (1 - clippedProgress);
   const overrunOffset = circumference * (1 - minuteProgress);
   const displayColor = positive ? "text-white" : "text-red-500";
-  const ringColor = positive ? "stroke-white" : "stroke-red-500";
+  const availableStroke = availableStrokeClassName ?? "stroke-emerald-400";
+  const overrunStroke = overrunStrokeClassName ?? "stroke-red-500";
 
   const formatted = formatDuration(Math.round(remainingSeconds));
 
@@ -53,7 +60,7 @@ export function CircularTimer({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          className={cn(ringColor, positive ? "opacity-100" : "opacity-0")}
+          className={cn(availableStroke, positive ? "opacity-100" : "opacity-0")}
           strokeWidth={8}
           fill="none"
           strokeDasharray={circumference}
@@ -64,7 +71,7 @@ export function CircularTimer({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          className={cn(ringColor, positive ? "opacity-0" : "opacity-100")}
+          className={cn(overrunStroke, positive ? "opacity-0" : "opacity-100")}
           strokeWidth={8}
           fill="none"
           strokeDasharray={circumference}
@@ -73,7 +80,9 @@ export function CircularTimer({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-5xl font-semibold tabular-nums", displayColor)}>{formatted}</span>
+        <span className={cn("font-semibold tabular-nums", valueClassName ?? "text-[1.5rem]", displayColor)}>
+          {formatted}
+        </span>
         {label ? <span className="mt-2 text-sm text-white/70">{label}</span> : null}
       </div>
     </div>

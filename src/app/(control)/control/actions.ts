@@ -38,6 +38,11 @@ const addGroupMembersSchema = z.object({
   members: z.array(memberSchema).min(1, "Introduza pelo menos um membro").max(50)
 });
 
+const updateTimerDurationSchema = z.object({
+  timerId: z.string().uuid(),
+  durationSeconds: z.number().int().min(10)
+});
+
 const AVATAR_BUCKET = "timer-avatars";
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -330,6 +335,23 @@ export async function resetTimerAction(payload: z.infer<typeof identifierSchema>
     target_timer: timerId,
     new_duration: newDurationSeconds ?? null
   });
+
+  if (error) {
+    throw error;
+  }
+
+  revalidatePath("/control");
+  revalidatePath("/display");
+}
+
+export async function updateTimerDurationAction(payload: z.infer<typeof updateTimerDurationSchema>) {
+  const input = updateTimerDurationSchema.parse(payload);
+  const supabase = createServiceSupabaseClient();
+
+  const { error } = await supabase
+    .from("timers")
+    .update({ duration_seconds: input.durationSeconds })
+    .eq("id", input.timerId);
 
   if (error) {
     throw error;
